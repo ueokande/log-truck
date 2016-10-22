@@ -1,0 +1,99 @@
+#!/bin/bash
+
+usage() {
+  echo >&2 "Usage: log-truck [OPTION..]"
+  echo >&2 ""
+  echo >&2 "  -h, --help                displays help and exit"
+  echo >&2 "  -n, --dry-run             dry run"
+  echo >&2 "  -d, --directory <path>    directory path that contains log files, default is /var/log/nginx"
+  echo >&2 "  --prefix <string>         prefix of log file, default is 'access.log-'"
+  echo >&2 "  --suffix <string>         suffix of log file, default is '.gz'"
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -h|--help)
+      usage
+      exit
+      ;;
+    -n|--dry-run)
+      DRY_RUN=1
+      ;;
+    -d|--directory)
+      DIRECTORY="$2"
+      shift
+      ;;
+    --prefix)
+      PREFIX="$2"
+      shift
+      ;;
+    --suffix)
+      SUFFIX="$2"
+      shift
+      ;;
+    *)
+      echo >&2 "Unknown option: $1"
+      exit 1
+      ;;
+  esac
+  shift # past argument or value
+done
+
+DIRECTORY="${DIRECTORY-/var/log/nginx}"
+OUTPUT_DIRECTORY="${OUTPUT_DIRECTORY-$PWD}"
+PREFIX="${PREFIX-access.log-}"
+SUFFIX="${SUFFIX-.gz}"
+
+if ! test -d "$DIRECTORY"; then
+  echo >&2 "Directory not found: $DIRECTORY"
+  exit 1
+fi
+
+today=($(date +'%Y %m %d'))
+today_year=${today[0]}
+today_month=${today[1]}
+today_day=${today[2]}
+
+yesterday=($(date +'%Y %m %d' -d "${today_year}-${today_month}-${today_day} -1 days"))
+yesterday_year=${yesterday[0]}
+yesterday_month=${yesterday[1]}
+# yesterday_day=${yesterday[2]}
+
+if [[ "$today_year" != "$yesterday_year" ]]; then
+  # new year
+  output_date="${yesterday_year}0000"
+  input_date_pattern="${yesterday_year}????"
+elif [[ "$today_month" != "$yesterday_month" ]]; then
+  # new month
+  output_date="${yesterday_year}${yesterday_month}00"
+  input_date_pattern="${yesterday_year}${yesterday_month}??"
+else
+  # not new year and not new month
+  exit
+fi
+
+input_file_pattern="${DIRECTORY}/${PREFIX}${input_date_pattern}${SUFFIX}"
+output_file_path="${DIRECTORY}/${PREFIX}${output_date}${SUFFIX}"
+
+if [ -f "$output_file_path" ]; then
+  echo >&2 "Cannot create file '${output_file_path}': File exists"
+  exit 1
+fi
+
+if ! stat "$input_file_pattern" >/dev/null 2>&1; then
+  exit 0
+fi
+
+if [ -z "$DRY_RUN" ]; then
+  echo >&2 "Creating ${output_file_path}"
+  zcat $input_file_pattern | gzip > "$output_file_path"
+  for file in $input_file_pattern; do
+    echo >&2 "Removing ${file}"
+    rm -f "${file}"
+  done
+else
+  echo >&2 "Would create ${output_file_path}"
+  for file in $input_file_pattern; do
+    echo >&2 "Would remove ${file}"
+  done
+fi
