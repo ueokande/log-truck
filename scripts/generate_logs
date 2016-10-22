@@ -1,0 +1,76 @@
+#!/bin/bash -e
+
+usage() {
+  echo >&2 "Usage: log-truck [OPTION..]"
+  echo >&2 ""
+  echo >&2 "  -n, --dry-run             dry run"
+  echo >&2 "  -d, --directory <path>    directory path that contains log files"
+  echo >&2 "  --prefix <string>         prefix of log file, default is 'access.log-'"
+  echo >&2 "  --suffix <string>         suffix of log file, default is '.gz'"
+  echo >&2 "  --begin <date>            begin date"
+  echo >&2 "  --end <date>              end date"
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -h|--help)
+      usage
+      exit
+      ;;
+    -n|--dry-run)
+      DRY_RUN=1
+      ;;
+    -d|--directory)
+      DIRECTORY="$2"
+      shift
+      ;;
+    --prefix)
+      PREFIX="$2"
+      shift
+      ;;
+    --suffix)
+      SUFFIX="$2"
+      shift
+      ;;
+    --begin)
+      BEGIN_DATE="${2}"
+      shift
+      ;;
+    --end)
+      END_DATE="${2}"
+      shift
+      ;;
+    *)
+      echo >&2 "Unknown option: $1"
+      exit 1
+      ;;
+  esac
+  shift # past argument or value
+done
+PREFIX="${PREFIX-access.log-}"
+SUFFIX="${SUFFIX-.gz}"
+
+if [[ -z "$DIRECTORY" ]]; then
+  echo >&2 "Directory is not specified"
+  exit 1
+elif [[ -z "$BEGIN_DATE" || -z "$END_DATE" ]]; then
+  echo >&2 "Date range is not specified"
+  exit 1
+elif ! [[ -d "$DIRECTORY" ]]; then
+  echo >&2 "Directory not found: $DIRECTORY"
+  exit 1
+fi
+
+
+while [[ "$(date +%s --date=$BEGIN_DATE)" < "$(date +%s --date=$END_DATE)" ]]; do
+  if [ -z "$DRY_RUN" ]; then
+    formatted_date="$(date +%Y%m%d -d ${BEGIN_DATE})"
+    output="${DIRECTORY}/${PREFIX}${formatted_date}${SUFFIX}"
+    echo "Creating ${output}"
+    echo "Log @ ${BEGIN_DATE}" | gzip > "$output" 
+  else
+    echo "Would create ${DIRECTORY}/${PREFIX}${BEGIN_DATE}${SUFFIX}"
+  fi
+  BEGIN_DATE="$(date +%F --date=${BEGIN_DATE}\ +1\ days)"
+done
+
